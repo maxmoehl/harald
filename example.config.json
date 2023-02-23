@@ -1,0 +1,15 @@
+{
+  "debug": true,
+  "listen_interval": "1s",
+  "rules": [
+    {
+      "listen": ":60001",
+      "connect": "localhost:8080"
+    },
+
+    {
+      "listen": ":60002",
+      "connect": "localhost:8081"
+    }
+  ]
+}
