@@ -1,15 +1,25 @@
 {
-  "debug": true,
-  "listen_interval": "1s",
+  "dial_timeout": "10ms",
   "rules": [
     {
-      "listen": ":60001",
-      "connect": "localhost:8080"
+      "listen": {
+        "network": "tcp",
+        "address": ":60001"
+      },
+      "connect": {
+        "network": "tcp",
+        "address": "localhost:8080"
+      }
     },
-
     {
-      "listen": ":60002",
-      "connect": "localhost:8081"
+      "listen": {
+        "network": "tcp",
+        "address": ":60002"
+      },
+      "connect": {
+        "network": "tcp",
+        "address": "localhost:8081"
+      }
     }
   ]
 }

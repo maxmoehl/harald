@@ -60,20 +60,20 @@ func main() {
 		return
 	}
 
-	var tlsConf *tls.Config
-	if c.TLS != nil {
-		err = fmt.Errorf("tls is not implemented yet")
+	dialTimeout, err := time.ParseDuration(c.DialTimeout)
+	if err != nil {
 		return
 	}
 
-	interval, err := time.ParseDuration(c.ListenInterval)
-	if err != nil {
+	var tlsConf *tls.Config
+	if c.TLS != nil {
+		err = fmt.Errorf("tlsConf is not implemented yet")
 		return
 	}
 
 	var forwarders []*Forwarder
 	for _, r := range c.Rules {
-		forwarders = append(forwarders, NewForwarder(r, interval, tlsConf))
+		forwarders = append(forwarders, r.Forwarder(tlsConf, dialTimeout))
 	}
 
 	signals := make(chan os.Signal)
@@ -108,51 +108,60 @@ func (l level) Level() slog.Level {
 }
 
 type Config struct {
-	Rules          []ForwardRule `json:"rules"`
-	TLS            *TLS          `json:"tls"`
-	Debug          bool          `json:"debug"`
-	ListenInterval string        `json:"listen_interval"`
+	DialTimeout string        `json:"dial_timeout"`
+	TLS         *TLS          `json:"tlsConf"`
+	Rules       []ForwardRule `json:"rules"`
 }
 
 type TLS struct {
 	Certificate string `json:"certificate"`
 	Key         string `json:"key"`
-	ClientCAs   string `json:"clientCAs"`
+	ClientCAs   string `json:"client_cas"`
+}
+
+type NetConf struct {
+	Network string `json:"network"`
+	Address string `json:"address"`
 }
 
 type ForwardRule struct {
-	Listen  string `json:"listen"`
-	Connect string `json:"connect"`
+	// Listen parameters to listen for new connections.
+	Listen NetConf `json:"listen"`
+	// Connect parameters
+	Connect NetConf `json:"connect"`
+}
+
+// Forwarder creates the matching Forwarder to the rule and the given
+// additional parameters. If tlsConf is nil no TLS will be used to listen for
+// new connections.
+func (r ForwardRule) Forwarder(tlsConf *tls.Config, dialTimeout time.Duration) *Forwarder {
+	return &Forwarder{
+		ForwardRule: r,
+		tlsConf:     tlsConf,
+		timeout:     dialTimeout,
+	}
 }
 
 type Forwarder struct {
 	ForwardRule
-	l        net.Listener
-	interval time.Duration
-	tls      *tls.Config
-}
-
-func NewForwarder(rule ForwardRule, interval time.Duration, tlsConf *tls.Config) *Forwarder {
-	return &Forwarder{
-		ForwardRule: rule,
-		interval:    interval,
-		tls:         tlsConf,
-	}
+	listener net.Listener
+	tlsConf  *tls.Config
+	timeout  time.Duration
 }
 
 // Start opens a new listener.
 func (f *Forwarder) Start() error {
-	if f.l != nil {
+	if f.listener != nil {
 		slog.Debug("listener already open, not starting again", KeyForwarder, f.String())
 		return nil
 	}
 	slog.Debug("starting listener", KeyForwarder, f.String())
 
 	var err error
-	if f.tls == nil {
-		f.l, err = net.Listen("tcp", f.Listen)
+	if f.tlsConf == nil {
+		f.listener, err = net.Listen(f.Listen.Network, f.Listen.Address)
 	} else {
-		f.l, err = tls.Listen("tcp", f.Listen, f.tls)
+		f.listener, err = tls.Listen(f.Listen.Network, f.Listen.Address, f.tlsConf)
 	}
 	if err != nil {
 		return err
@@ -160,7 +169,7 @@ func (f *Forwarder) Start() error {
 
 	go func() {
 		for {
-			c, err := f.l.Accept()
+			c, err := f.listener.Accept()
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
 					// net.ErrClosed is expected in cases where we shut down the listener so
@@ -184,7 +193,7 @@ func (f *Forwarder) Start() error {
 func (f *Forwarder) handle(source net.Conn) {
 	defer func() { _ = source.Close() }()
 
-	target, err := net.Dial("tcp", f.Connect)
+	target, err := net.DialTimeout(f.Connect.Network, f.Connect.Address, f.timeout)
 	if err != nil {
 		return
 	}
@@ -195,10 +204,12 @@ func (f *Forwarder) handle(source net.Conn) {
 	// to return as well.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	go func() {
 		defer cancel()
 		_, _ = io.Copy(source, target)
 	}()
+
 	go func() {
 		defer cancel()
 		_, _ = io.Copy(target, source)
@@ -210,14 +221,15 @@ func (f *Forwarder) handle(source net.Conn) {
 // Stop will close the listener if it is open. The reference to the listener is
 // also set to nil to prevent further usage.
 func (f *Forwarder) Stop() {
-	if f.l == nil {
+	if f.listener == nil {
 		slog.Debug("listener already cosed", KeyForwarder, f.String())
 		return
 	}
 	slog.Debug("closing listener", KeyForwarder, f.String())
 
-	l := f.l
-	f.l = nil
+	l := f.listener
+	f.listener = nil
+
 	err := l.Close()
 	if err != nil {
 		slog.Warn("error while closing listener", KeyForwarder, f.String(), KeyError, err.Error())

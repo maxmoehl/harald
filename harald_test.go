@@ -27,12 +27,17 @@ func echoChamber(listen string, t *testing.T) {
 func TestClosingListenerDoesntCloseConnection(t *testing.T) {
 	forwarder := Forwarder{
 		ForwardRule: ForwardRule{
-			Listen:  ":60001",
-			Connect: "localhost:60002",
+			Listen: NetConf{
+				Network: "tcp",
+				Address: ":60001",
+			},
+			Connect: NetConf{
+				Network: "tcp",
+				Address: "localhost:60002",
+			},
 		},
-		l:        nil,
-		interval: 0,
-		tls:      nil,
+		listener: nil,
+		tlsConf:  nil,
 	}
 
 	go echoChamber(":60002", t)
