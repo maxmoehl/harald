@@ -35,40 +35,39 @@ func init() {
 }
 
 func main() {
+	err := Main()
+	if err != nil {
+		slog.Error("fatal error - exiting", KeyError, err.Error())
+		os.Exit(1)
+	}
+}
+
+func Main() error {
 	slog.Info("Harald is getting started", KeyPid, os.Getpid())
 
-	var err error
-	defer func() {
-		if err != nil {
-			slog.Error("fatal error", err)
-			os.Exit(1)
-		}
-	}()
 	if len(os.Args) != 2 {
-		err = fmt.Errorf("please provide the config file as first and only argument")
-		return
+		return fmt.Errorf("please provide the config file as first and only argument")
 	}
 
 	configReader, err := os.Open(os.Args[1])
 	if err != nil {
-		return
+		return err
 	}
 
 	var c Config
 	err = json.NewDecoder(configReader).Decode(&c)
 	if err != nil {
-		return
+		return err
 	}
 
 	dialTimeout, err := time.ParseDuration(c.DialTimeout)
 	if err != nil {
-		return
+		return err
 	}
 
 	var tlsConf *tls.Config
 	if c.TLS != nil {
-		err = fmt.Errorf("tlsConf is not implemented yet")
-		return
+		return fmt.Errorf("tlsConf is not implemented yet")
 	}
 
 	var forwarders []*Forwarder
@@ -85,7 +84,7 @@ func main() {
 			for _, f := range forwarders {
 				f.Stop()
 			}
-			return
+			return nil
 		case syscall.SIGUSR1:
 			for _, f := range forwarders {
 				err = f.Start()
@@ -99,6 +98,8 @@ func main() {
 			}
 		}
 	}
+
+	return nil
 }
 
 type level slog.Level
