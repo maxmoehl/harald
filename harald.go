@@ -205,7 +205,7 @@ func (f *Forwarder) handle(source net.Conn) {
 	// only after the tcp connection could be established upstream we add TLS
 	// to the connection.
 	if f.tlsConf != nil {
-		target = tls.Server(target, f.tlsConf)
+		target = tls.Server(source, f.tlsConf)
 	}
 
 	// we only wait until one end closes the connection. We return after that
