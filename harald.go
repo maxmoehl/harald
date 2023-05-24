@@ -27,11 +27,11 @@ const (
 )
 
 func init() {
-	slog.SetDefault(slog.New(slog.HandlerOptions{
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource:   false,
 		Level:       level(slog.LevelDebug),
 		ReplaceAttr: nil,
-	}.NewJSONHandler(os.Stdout)))
+	})))
 }
 
 func main() {
