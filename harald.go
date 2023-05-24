@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"net"
 	"os"
@@ -20,10 +21,12 @@ import (
 )
 
 const (
-	KeyForwarder = "forwarder"
-	KeyError     = "error"
-	KeySignal    = "signal"
-	KeyPid       = "pid"
+	KeyForwarder    = "forwarder"
+	KeyError        = "error"
+	KeySignal       = "signal"
+	KeyPid          = "pid"
+	KeyBytesWritten = "bytes-written"
+	KeyConnId       = "conn-id"
 )
 
 func init() {
@@ -151,19 +154,14 @@ type Forwarder struct {
 }
 
 // Start opens a new listener.
-func (f *Forwarder) Start() error {
+func (f *Forwarder) Start() (err error) {
 	if f.listener != nil {
 		slog.Debug("listener already open, not starting again", KeyForwarder, f.String())
 		return nil
 	}
 	slog.Debug("starting listener", KeyForwarder, f.String())
 
-	var err error
-	if f.tlsConf == nil {
-		f.listener, err = net.Listen(f.Listen.Network, f.Listen.Address)
-	} else {
-		f.listener, err = tls.Listen(f.Listen.Network, f.Listen.Address, f.tlsConf)
-	}
+	f.listener, err = net.Listen(f.Listen.Network, f.Listen.Address)
 	if err != nil {
 		return err
 	}
@@ -192,31 +190,55 @@ func (f *Forwarder) Start() error {
 }
 
 func (f *Forwarder) handle(source net.Conn) {
+	log := slog.With(KeyForwarder, f.String(), KeyConnId, uuid.Must(uuid.NewRandom()))
+	log.Debug("handle start")
+
 	defer func() { _ = source.Close() }()
 
 	target, err := net.DialTimeout(f.Connect.Network, f.Connect.Address, f.timeout)
 	if err != nil {
+		log.Error("connecting upstream failed", KeyError, err.Error())
 		return
 	}
 	defer func() { _ = target.Close() }()
 
-	// we only wait until one end closes the connection. We return after that which
-	// runs the defers and closes both connections. This causes the second copy operation
-	// to return as well.
+	// only after the tcp connection could be established upstream we add TLS
+	// to the connection.
+	if f.tlsConf != nil {
+		target = tls.Server(target, f.tlsConf)
+	}
+
+	// we only wait until one end closes the connection. We return after that
+	// which runs the defers and closes both connections. This causes the
+	// second copy operation to return as well.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
 		defer cancel()
-		_, _ = io.Copy(source, target)
+		log.Debug("copy source->target started")
+		n, err := io.Copy(source, target)
+		if err != nil {
+			log.Error("copy source->target stopped", KeyBytesWritten, n, KeyError, err.Error())
+		} else {
+			log.Debug("copy source->target stopped", KeyBytesWritten, n)
+		}
+
 	}()
 
 	go func() {
 		defer cancel()
-		_, _ = io.Copy(target, source)
+		log.Debug("copy target->source started")
+		n, err := io.Copy(target, source)
+		if err != nil {
+			log.Error("copy target->source stopped", KeyBytesWritten, n, KeyError, err.Error())
+		} else {
+			log.Debug("copy target->source stopped", KeyBytesWritten, n)
+		}
 	}()
 
 	<-ctx.Done()
+	log.Debug("handle done")
 }
 
 // Stop will close the listener if it is open. The reference to the listener is
