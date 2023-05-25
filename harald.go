@@ -29,6 +29,12 @@ const (
 	KeyConnId       = "conn-id"
 )
 
+type level slog.Level
+
+func (l level) Level() slog.Level {
+	return slog.Level(l)
+}
+
 func init() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource:   false,
@@ -63,11 +69,6 @@ func Main() error {
 		return err
 	}
 
-	dialTimeout, err := time.ParseDuration(c.DialTimeout)
-	if err != nil {
-		return err
-	}
-
 	var tlsConf *tls.Config
 	if c.TLS != nil {
 		return fmt.Errorf("tlsConf is not implemented yet")
@@ -75,7 +76,7 @@ func Main() error {
 
 	var forwarders []*Forwarder
 	for _, r := range c.Rules {
-		forwarders = append(forwarders, r.Forwarder(tlsConf, dialTimeout))
+		forwarders = append(forwarders, r.Forwarder(tlsConf, time.Duration(c.DialTimeout)))
 	}
 
 	signals := make(chan os.Signal)
@@ -103,29 +104,6 @@ func Main() error {
 	}
 
 	return nil
-}
-
-type level slog.Level
-
-func (l level) Level() slog.Level {
-	return slog.Level(l)
-}
-
-type Config struct {
-	DialTimeout string        `json:"dial_timeout"`
-	TLS         *TLS          `json:"tlsConf"`
-	Rules       []ForwardRule `json:"rules"`
-}
-
-type TLS struct {
-	Certificate string `json:"certificate"`
-	Key         string `json:"key"`
-	ClientCAs   string `json:"client_cas"`
-}
-
-type NetConf struct {
-	Network string `json:"network"`
-	Address string `json:"address"`
 }
 
 type ForwardRule struct {
