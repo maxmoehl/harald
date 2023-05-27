@@ -10,22 +10,31 @@ import (
 	"time"
 )
 
-func echoChamber(listen string, t *testing.T) {
+// echoChamber starts a new listener on a random port on the loopback address
+// and returns the address it is listening on. The listener is only active for
+// the first connection that is established to it. Any data received on the
+// connection is sent back through it.
+func echoChamber(t *testing.T) string {
 	t.Helper()
-	listener, err := net.Listen("tcp", listen)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	defer func() { _ = listener.Close() }()
 
-	conn, err := listener.Accept()
-	if err != nil {
-		t.Fatalf("unable to accept connection: %s", err.Error())
-	}
+	go func() {
+		defer func() { _ = listener.Close() }()
 
-	defer func() { _ = conn.Close() }()
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Errorf("unable to accept connection: %s", err.Error())
+			return
+		}
+		defer func() { _ = conn.Close() }()
 
-	_, _ = io.Copy(conn, conn)
+		_, _ = io.Copy(conn, conn)
+	}()
+
+	return listener.Addr().String()
 }
 
 // TestClosingListenerDoesntCloseConnection ensures that active connections
@@ -35,18 +44,16 @@ func TestClosingListenerDoesntCloseConnection(t *testing.T) {
 		ForwardRule: ForwardRule{
 			Listen: NetConf{
 				Network: "tcp",
-				Address: ":60001",
+				Address: "127.0.0.1:60001",
 			},
 			Connect: NetConf{
 				Network: "tcp",
-				Address: "localhost:60002",
+				Address: echoChamber(t),
 			},
 		},
 		listener: nil,
 		tlsConf:  nil,
 	}
-
-	go echoChamber(":60002", t)
 
 	err := forwarder.Start()
 	if err != nil {
@@ -105,15 +112,17 @@ func TestNoUpstreamConnection(t *testing.T) {
 		ForwardRule: ForwardRule{
 			Listen: NetConf{
 				Network: "tcp",
-				Address: ":60001",
+				Address: "127.0.0.1:60001",
 			},
 			Connect: NetConf{
 				Network: "tcp",
-				Address: "localhost:60002",
+				Address: "127.0.0.1:0",
 			},
 		},
 		listener: nil,
-		// technically we need a TLS config
+		// Technically we need a TLS config, but since there is no upstream
+		// connection we expect that the connection never gets to the TLS
+		// handshake.
 		tlsConf: &tls.Config{},
 	}
 

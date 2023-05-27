@@ -1,6 +1,10 @@
+//go:build unix
+
 // Harald is a great guy. He takes care of forwarding connections and listens
 // to your needs. Get him started with SIGUSR1, stop him with SIGUSR2 and shut
-// him down for good with SIGTERM.
+// him down for good with SIGTERM. Currently only unix-like systems (as
+// determined by the go build constraint `unix`) are supported due to the
+// dependency to the process signals.
 package main
 
 import (
@@ -13,11 +17,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/exp/slog"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -29,18 +35,10 @@ const (
 	KeyConnId       = "conn-id"
 )
 
-type level slog.Level
-
-func (l level) Level() slog.Level {
-	return slog.Level(l)
-}
+var logLevel = &slog.LevelVar{}
 
 func init() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		AddSource:   false,
-		Level:       level(slog.LevelDebug),
-		ReplaceAttr: nil,
-	})))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})).With("component", "harald"))
 }
 
 func main() {
@@ -58,59 +56,75 @@ func Main() error {
 		return fmt.Errorf("please provide the config file as first and only argument")
 	}
 
-	configReader, err := os.Open(os.Args[1])
+	c, err := loadConfig(os.Args[1])
 	if err != nil {
-		return err
+		return fmt.Errorf("loading config: %w", err)
 	}
 
-	var c Config
-	err = json.NewDecoder(configReader).Decode(&c)
+	// Until here we always only log INFO and higher, from now on we can use
+	// all levels.
+	logLevel.Set(c.LogLevel)
+
+	tlsConf, err := c.TLS.Config()
 	if err != nil {
-		return err
+		return fmt.Errorf("load tls config: %w", err)
 	}
 
-	var tlsConf *tls.Config
-	if c.TLS != nil {
-		return fmt.Errorf("tlsConf is not implemented yet")
-	}
-
-	var forwarders []*Forwarder
+	var forwarders Forwarders
 	for _, r := range c.Rules {
 		forwarders = append(forwarders, r.Forwarder(tlsConf, time.Duration(c.DialTimeout)))
 	}
 
+	slog.Info("harald is ready")
+
 	signals := make(chan os.Signal)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
+
 	for sig := range signals {
 		slog.Info("received signal", KeySignal, sig.String())
+
 		switch sig {
 		case syscall.SIGTERM:
-			for _, f := range forwarders {
-				f.Stop()
-			}
-			return nil
+			slog.Info("shutting down")
+			forwarders.Stop()
+			slog.Info("stopped listeners")
+			return nil // cannot break because of the switch
 		case syscall.SIGUSR1:
-			for _, f := range forwarders {
-				err = f.Start()
-				if err != nil {
-					fmt.Printf("failed to start %s: %s\n", f, err.Error())
-				}
-			}
+			forwarders.Start()
+			slog.Info("started listeners")
 		case syscall.SIGUSR2:
-			for _, f := range forwarders {
-				f.Stop()
-			}
+			forwarders.Stop()
+			slog.Info("stopped listeners")
 		}
 	}
 
 	return nil
 }
 
+func loadConfig(path string) (Config, error) {
+	r, err := os.Open(path)
+	if err != nil {
+		return Config{}, err
+	}
+
+	parts := strings.Split(path, ".")
+
+	var c Config
+	switch parts[len(parts)-1] {
+	case "yaml", "yml":
+		err = yaml.NewDecoder(r).Decode(&c)
+	case "json":
+		err = json.NewDecoder(r).Decode(&c)
+	}
+
+	return c, nil
+}
+
 type ForwardRule struct {
 	// Listen parameters to listen for new connections.
-	Listen NetConf `json:"listen"`
+	Listen NetConf `json:"listen" yaml:"listen"`
 	// Connect parameters
-	Connect NetConf `json:"connect"`
+	Connect NetConf `json:"connect" yaml:"connect"`
 }
 
 // Forwarder creates the matching Forwarder to the rule and the given
@@ -180,10 +194,12 @@ func (f *Forwarder) handle(source net.Conn) {
 	}
 	defer func() { _ = target.Close() }()
 
+	log.Debug("established upstream connection")
+
 	// only after the tcp connection could be established upstream we add TLS
 	// to the connection.
 	if f.tlsConf != nil {
-		target = tls.Server(source, f.tlsConf)
+		source = tls.Server(source, f.tlsConf)
 	}
 
 	// we only wait until one end closes the connection. We return after that
@@ -195,7 +211,7 @@ func (f *Forwarder) handle(source net.Conn) {
 	go func() {
 		defer cancel()
 		log.Debug("copy source->target started")
-		n, err := io.Copy(source, target)
+		n, err := io.Copy(target, source)
 		if err != nil {
 			log.Error("copy source->target stopped", KeyBytesWritten, n, KeyError, err.Error())
 		} else {
@@ -207,7 +223,7 @@ func (f *Forwarder) handle(source net.Conn) {
 	go func() {
 		defer cancel()
 		log.Debug("copy target->source started")
-		n, err := io.Copy(target, source)
+		n, err := io.Copy(source, target)
 		if err != nil {
 			log.Error("copy target->source stopped", KeyBytesWritten, n, KeyError, err.Error())
 		} else {
@@ -221,6 +237,7 @@ func (f *Forwarder) handle(source net.Conn) {
 
 // Stop will close the listener if it is open. The reference to the listener is
 // also set to nil to prevent further usage.
+// TODO: does this need explicit synchronization?
 func (f *Forwarder) Stop() {
 	if f.listener == nil {
 		slog.Debug("listener already cosed", KeyForwarder, f.String())
@@ -228,16 +245,54 @@ func (f *Forwarder) Stop() {
 	}
 	slog.Debug("closing listener", KeyForwarder, f.String())
 
+	// First, we copy the pointer, then we set the listener to nil. The case
+	// in which this happens twice and one of the routines gets nil is handled
+	// below.
 	l := f.listener
 	f.listener = nil
 
+	if l == nil {
+		// Since we do not properly synchronize we have the risk that two calls
+		// to stop run in parallel. In such cases the if at the beginning of
+		// the function is not enough to prevent us from still getting a nil
+		// listener which would cause a panic when we try to call Close on it.
+		slog.Warn("detected double stop, ignoring second stop", KeyForwarder, f.String())
+		return
+	}
+
 	err := l.Close()
 	if err != nil {
+		// Only a warning because the listener is closed in any case.
 		slog.Warn("error while closing listener", KeyForwarder, f.String(), KeyError, err.Error())
 	}
 }
 
-// String representation of the Forwarder.
+// String representation of the Forwarder. The format of the addresses is
+// inspired by the '-i' argument of lsof.
 func (f *Forwarder) String() string {
-	return fmt.Sprintf("Forwarder(%s->%s)", f.Listen, f.Connect)
+	return fmt.Sprintf("Forwarder(%s@%s->%s@%s)",
+		f.Listen.Network, f.Listen.Address, f.Connect.Network, f.Connect.Address)
+}
+
+// Forwarders maintains a list of pointers to Forwarder. It holds pointers
+// because each struct may maintain data that can not be copied.
+type Forwarders []*Forwarder
+
+// Start all forwarders in the list. Logs errors encountered while starting a
+// forwarder but continues starting the forwarders.
+func (forwarders Forwarders) Start() {
+	var err error
+	for _, f := range forwarders {
+		err = f.Start()
+		if err != nil {
+			slog.Error("failed to start forwarder", KeyForwarder, f.String(), KeyError, err)
+		}
+	}
+}
+
+// Stop all forwarders in the list.
+func (forwarders Forwarders) Stop() {
+	for _, f := range forwarders {
+		f.Stop()
+	}
 }
