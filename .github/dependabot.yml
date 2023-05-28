@@ -1,0 +1,8 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    commit-message:
+      prefix: dep
+    schedule:
+      interval: weekly
