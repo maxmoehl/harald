@@ -10,20 +10,17 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/exp/slog"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -72,12 +69,17 @@ func Main() error {
 
 	var forwarders Forwarders
 	for _, r := range c.Rules {
-		forwarders = append(forwarders, r.Forwarder(tlsConf, time.Duration(c.DialTimeout)))
+		forwarders = append(forwarders, r.Forwarder(tlsConf, c.DialTimeout.Duration()))
 	}
 
 	slog.Info("harald is ready")
 
-	signals := make(chan os.Signal)
+	signals := make(chan os.Signal, 1)
+
+	if c.EnableListeners {
+		signals <- syscall.SIGUSR1
+	}
+
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
 
 	for sig := range signals {
@@ -99,43 +101,6 @@ func Main() error {
 	}
 
 	return nil
-}
-
-func loadConfig(path string) (Config, error) {
-	r, err := os.Open(path)
-	if err != nil {
-		return Config{}, err
-	}
-
-	parts := strings.Split(path, ".")
-
-	var c Config
-	switch parts[len(parts)-1] {
-	case "yaml", "yml":
-		err = yaml.NewDecoder(r).Decode(&c)
-	case "json":
-		err = json.NewDecoder(r).Decode(&c)
-	}
-
-	return c, nil
-}
-
-type ForwardRule struct {
-	// Listen parameters to listen for new connections.
-	Listen NetConf `json:"listen" yaml:"listen"`
-	// Connect parameters
-	Connect NetConf `json:"connect" yaml:"connect"`
-}
-
-// Forwarder creates the matching Forwarder to the rule and the given
-// additional parameters. If tlsConf is nil no TLS will be used to listen for
-// new connections.
-func (r ForwardRule) Forwarder(tlsConf *tls.Config, dialTimeout time.Duration) *Forwarder {
-	return &Forwarder{
-		ForwardRule: r,
-		tlsConf:     tlsConf,
-		timeout:     dialTimeout,
-	}
 }
 
 type Forwarder struct {
