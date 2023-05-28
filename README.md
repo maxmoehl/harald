@@ -32,7 +32,8 @@ The TLS config looks like this:
   "certificate": "PEM",
   "key": "PEM",
   "client_cas": "PEM",
-  "key_log_file": "/some/path"
+  "key_log_file": "/some/path",
+  "application_protocols": ["http/1.1", "h2"]
 }
 ```
 

@@ -82,6 +82,10 @@ type TLS struct {
 	Key         string `json:"key" yaml:"key"`
 	ClientCAs   string `json:"client_cas" yaml:"client_cas"`
 	KeyLogFile  string `json:"key_log_file" yaml:"key_log_file"`
+	// ApplicationProtocols offered via ALPN in order of preference. See the
+	// IANA registry for a list of options:
+	// https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
+	ApplicationProtocols []string `json:"application_protocols" yaml:"application_protocols"`
 }
 
 func (t *TLS) Config() (conf *tls.Config, err error) {
@@ -94,7 +98,11 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 	if t == nil {
 		return nil, nil
 	}
-	conf = &tls.Config{}
+
+	conf = &tls.Config{
+		NextProtos: t.ApplicationProtocols,
+		ClientCAs:  x509.NewCertPool(),
+	}
 
 	// set up TLS keylogger
 	if t.KeyLogFile != "" {
@@ -117,7 +125,6 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 	var block *pem.Block
 	var certs int
 
-	conf.ClientCAs = x509.NewCertPool()
 	d := []byte(t.ClientCAs)
 
 	for len(d) > 0 {
