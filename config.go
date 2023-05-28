@@ -16,7 +16,7 @@ import (
 
 type duration time.Duration
 
-func (d *duration) UnmarshalJSON(b []byte) error {
+func (d *duration) UnmarshalText(b []byte) error {
 	t, err := time.ParseDuration(string(b[1 : len(b)-1]))
 	if err != nil {
 		return err
@@ -33,7 +33,7 @@ func (d *duration) Duration() time.Duration {
 }
 
 type Config struct {
-	Version
+	ConfigVersion
 	LogLevel        slog.Level    `json:"log_level" yaml:"log_level"`
 	DialTimeout     duration      `json:"dial_timeout" yaml:"dial_timeout"`
 	EnableListeners bool          `json:"enable_listeners" yaml:"enable_listeners"`
@@ -41,11 +41,11 @@ type Config struct {
 	Rules           []ForwardRule `json:"rules" yaml:"rules"`
 }
 
-type Version struct {
+type ConfigVersion struct {
 	Version *int `json:"version" yaml:"version"`
 }
 
-func (v Version) Get() int {
+func (v ConfigVersion) Get() int {
 	if v.Version == nil {
 		return 1
 	}
@@ -172,8 +172,8 @@ func loadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("load config: %w", err)
 	}
 
-	if c.Version.Get() != 1 {
-		return Config{}, fmt.Errorf("load config: unknown version '%d'", c.Version)
+	if c.ConfigVersion.Get() != 1 {
+		return Config{}, fmt.Errorf("load config: unknown version '%d'", c.ConfigVersion)
 	}
 
 	return c, nil
