@@ -13,8 +13,8 @@ import (
 
 type duration time.Duration
 
-func (d *duration) UnmarshalText(b []byte) error {
-	t, err := time.ParseDuration(string(b[1 : len(b)-1]))
+func (d *duration) UnmarshalText(text []byte) error {
+	t, err := time.ParseDuration(string(text))
 	if err != nil {
 		return err
 	}
