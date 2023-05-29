@@ -1,17 +1,14 @@
-package main
+package harald
 
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/exp/slog"
-	"gopkg.in/yaml.v3"
 )
 
 type duration time.Duration
@@ -156,32 +153,4 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 	}
 
 	return conf, nil
-}
-
-func loadConfig(path string) (Config, error) {
-	r, err := os.Open(path)
-	if err != nil {
-		return Config{}, fmt.Errorf("load config: %w", err)
-	}
-
-	parts := strings.Split(path, ".")
-
-	var c Config
-	switch parts[len(parts)-1] {
-	case "yaml", "yml":
-		err = yaml.NewDecoder(r).Decode(&c)
-	case "json":
-		err = json.NewDecoder(r).Decode(&c)
-	default:
-		err = fmt.Errorf("unknown file extension '%s'", parts[len(parts)-1])
-	}
-	if err != nil {
-		return Config{}, fmt.Errorf("load config: %w", err)
-	}
-
-	if c.ConfigVersion.Get() != 1 {
-		return Config{}, fmt.Errorf("load config: unknown version '%d'", c.ConfigVersion)
-	}
-
-	return c, nil
 }

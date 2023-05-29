@@ -1,11 +1,16 @@
 //go:build unix
 
+// Package harald contains the core logic of harald.
+//
 // Harald is a great guy. He takes care of forwarding connections and listens
 // to your needs. Get him started with SIGUSR1, stop him with SIGUSR2 and shut
 // him down for good with SIGTERM. Currently only unix-like systems (as
 // determined by the go build constraint `unix`) are supported due to the
 // dependency to the process signals.
-package main
+//
+// Any logging is done through the default logger of log/slog. Consult the
+// documentation for how to configure it.
+package harald
 
 import (
 	"context"
@@ -15,7 +20,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/signal"
 	"syscall"
 	"time"
 
@@ -32,36 +36,10 @@ const (
 	KeyConnId       = "conn-id"
 )
 
-var logLevel = &slog.LevelVar{}
-
-func init() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})).With("component", "harald"))
-}
-
-func main() {
-	err := Main()
-	if err != nil {
-		slog.Error("fatal error - exiting", KeyError, err.Error())
-		os.Exit(1)
-	}
-}
-
-func Main() error {
-	slog.Info("Harald is getting started", KeyPid, os.Getpid())
-
-	if len(os.Args) != 2 {
-		return fmt.Errorf("please provide the config file as first and only argument")
-	}
-
-	c, err := loadConfig(os.Args[1])
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	// Until here we always only log INFO and higher, from now on we can use
-	// all levels.
-	logLevel.Set(c.LogLevel)
-
+// Harald is the main entrypoint. The config controls the behaviour and the
+// signals channel is used to bring up / shut down the listeners and stop the
+// execution. The channel should be subscribed to SIGTERM, SIGUSR1 and SIGUSR2.
+func Harald(c Config, signals <-chan os.Signal) error {
 	tlsConf, err := c.TLS.Config()
 	if err != nil {
 		return fmt.Errorf("load tls config: %w", err)
@@ -74,13 +52,10 @@ func Main() error {
 
 	slog.Info("harald is ready")
 
-	signals := make(chan os.Signal, 1)
-
 	if c.EnableListeners {
-		signals <- syscall.SIGUSR1
+		forwarders.Start()
+		slog.Info("started listeners")
 	}
-
-	signal.Notify(signals, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
 
 	for sig := range signals {
 		slog.Info("received signal", KeySignal, sig.String())
@@ -97,6 +72,8 @@ func Main() error {
 		case syscall.SIGUSR2:
 			forwarders.Stop()
 			slog.Info("stopped listeners")
+		default:
+			slog.Debug("ignoring unknown signal", KeySignal, sig.String())
 		}
 	}
 
