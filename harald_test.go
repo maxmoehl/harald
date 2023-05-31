@@ -125,3 +125,63 @@ func TestNoUpstreamConnection(t *testing.T) {
 		t.Fatal("did not expect to be able to start the TLS handshake")
 	}
 }
+
+func TestTlsTermination(t *testing.T) {
+	ca := haraldtest.NewCertificateAuthority(t)
+	cert, err := tls.X509KeyPair(ca.NewServerCertificate(t))
+	if err != nil {
+		t.Fatalf("load key pair: %s", err.Error())
+	}
+
+	forwarder := Forwarder{
+		ForwardRule: ForwardRule{
+			Listen: NetConf{
+				Network: "tcp",
+				Address: "127.0.0.1:0",
+			},
+			Connect: NetConf{
+				Network: "tcp",
+				Address: haraldtest.EchoChamber(t),
+			},
+		},
+		listener: nil,
+		tlsConf: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		},
+	}
+
+	err = forwarder.Start()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	defer forwarder.Stop()
+
+	conn, err := tls.Dial("tcp", forwarder.listener.Addr().String(), &tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS13,
+		MaxVersion:         tls.VersionTLS13,
+	})
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	writePayload := []byte("foobar")
+	written, err := conn.Write(writePayload)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if written != len(writePayload) {
+		t.Fatal("written bytes don't match")
+	}
+
+	readPayload := make([]byte, len(writePayload))
+	read, err := conn.Read(readPayload)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if written != read {
+		t.Fatal("read bytes don't match written bytes")
+	}
+
+	forwarder.Stop()
+}
