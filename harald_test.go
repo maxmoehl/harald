@@ -3,39 +3,13 @@ package harald
 import (
 	"context"
 	"crypto/tls"
-	"io"
 	"net"
 	"net/http/httptrace"
 	"testing"
 	"time"
+
+	"github.com/maxmoehl/harald/haraldtest"
 )
-
-// echoChamber starts a new listener on a random port on the loopback address
-// and returns the address it is listening on. The listener is only active for
-// the first connection that is established to it. Any data received on the
-// connection is sent back through it.
-func echoChamber(t *testing.T) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	go func() {
-		defer func() { _ = listener.Close() }()
-
-		conn, err := listener.Accept()
-		if err != nil {
-			t.Errorf("unable to accept connection: %s", err.Error())
-			return
-		}
-		defer func() { _ = conn.Close() }()
-
-		_, _ = io.Copy(conn, conn)
-	}()
-
-	return listener.Addr().String()
-}
 
 // TestClosingListenerDoesntCloseConnection ensures that active connections
 // are not affected by the listener being closed.
@@ -44,11 +18,11 @@ func TestClosingListenerDoesntCloseConnection(t *testing.T) {
 		ForwardRule: ForwardRule{
 			Listen: NetConf{
 				Network: "tcp",
-				Address: "127.0.0.1:60001",
+				Address: "127.0.0.1:0",
 			},
 			Connect: NetConf{
 				Network: "tcp",
-				Address: echoChamber(t),
+				Address: haraldtest.EchoChamber(t),
 			},
 		},
 		listener: nil,
@@ -61,7 +35,7 @@ func TestClosingListenerDoesntCloseConnection(t *testing.T) {
 	}
 	defer forwarder.Stop()
 
-	conn, err := net.Dial("tcp", "localhost:60001")
+	conn, err := net.Dial("tcp", forwarder.listener.Addr().String())
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -112,7 +86,7 @@ func TestNoUpstreamConnection(t *testing.T) {
 		ForwardRule: ForwardRule{
 			Listen: NetConf{
 				Network: "tcp",
-				Address: "127.0.0.1:60001",
+				Address: "127.0.0.1:0",
 			},
 			Connect: NetConf{
 				Network: "tcp",
@@ -142,7 +116,7 @@ func TestNoUpstreamConnection(t *testing.T) {
 		Config:    &tls.Config{InsecureSkipVerify: true},
 	}
 
-	conn, err := dialer.DialContext(traceCtx, "tcp", "localhost:60001")
+	conn, err := dialer.DialContext(traceCtx, "tcp", forwarder.listener.Addr().String())
 	if err == nil {
 		_ = conn.Close()
 		t.Fatal("expected TLS dial to fail")
