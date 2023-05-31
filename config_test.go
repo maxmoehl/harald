@@ -40,7 +40,7 @@ func Test_duration_UnmarshalJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.b), func(t *testing.T) {
-			var d duration
+			var d Duration
 
 			err := json.Unmarshal(tt.b, &d)
 			if (err != nil) != tt.wantErr {

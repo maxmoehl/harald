@@ -11,18 +11,18 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-type duration time.Duration
+type Duration time.Duration
 
-func (d *duration) UnmarshalText(text []byte) error {
+func (d *Duration) UnmarshalText(text []byte) error {
 	t, err := time.ParseDuration(string(text))
 	if err != nil {
 		return err
 	}
-	*d = duration(t)
+	*d = Duration(t)
 	return nil
 }
 
-func (d *duration) Duration() time.Duration {
+func (d *Duration) Duration() time.Duration {
 	if d == nil {
 		return 0
 	}
@@ -32,7 +32,7 @@ func (d *duration) Duration() time.Duration {
 type Config struct {
 	ConfigVersion
 	LogLevel        slog.Level    `json:"log_level" yaml:"log_level"`
-	DialTimeout     duration      `json:"dial_timeout" yaml:"dial_timeout"`
+	DialTimeout     Duration      `json:"dial_timeout" yaml:"dial_timeout"`
 	EnableListeners bool          `json:"enable_listeners" yaml:"enable_listeners"`
 	TLS             *TLS          `json:"tls" yaml:"tls"`
 	Rules           []ForwardRule `json:"rules" yaml:"rules"`
