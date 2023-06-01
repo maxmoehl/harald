@@ -1,0 +1,28 @@
+version: 2
+log_level: debug
+dial_timeout: 10ms
+rules:
+  http:
+    dial_timeout: 5ms
+    connect:
+      address: localhost:8080
+      network: tcp
+    listen:
+      address: localhost:4443
+      network: tcp
+    tls:
+      certificate: |
+        -----BEGIN CERTIFICATE-----
+        ...
+        -----END CERTIFICATE-----
+      key: |
+        -----BEGIN EC PRIVATE KEY-----
+        ...
+        -----END EC PRIVATE KEY-----
+      client_cas: |
+        -----BEGIN CERTIFICATE-----
+        ...
+        -----END CERTIFICATE-----
+        -----BEGIN CERTIFICATE-----
+        ...
+        -----END CERTIFICATE-----

@@ -10,6 +10,7 @@ import (
 
 	"github.com/maxmoehl/harald"
 
+	"github.com/BurntSushi/toml"
 	"golang.org/x/exp/slog"
 	"gopkg.in/yaml.v3"
 )
@@ -64,6 +65,8 @@ func loadConfig(path string) (harald.Config, error) {
 		err = yaml.NewDecoder(r).Decode(&c)
 	case "json":
 		err = json.NewDecoder(r).Decode(&c)
+	case "toml":
+		_, err = toml.NewDecoder(r).Decode(&c)
 	default:
 		err = fmt.Errorf("unknown file extension '%s'", parts[len(parts)-1])
 	}
@@ -71,8 +74,8 @@ func loadConfig(path string) (harald.Config, error) {
 		return harald.Config{}, fmt.Errorf("load config: %w", err)
 	}
 
-	if c.ConfigVersion.Get() != 1 {
-		return harald.Config{}, fmt.Errorf("load config: unknown version '%d'", c.ConfigVersion)
+	if c.Version.Get() != 2 {
+		return harald.Config{}, fmt.Errorf("load config: unknown version '%d'", c.Version)
 	}
 
 	return c, nil

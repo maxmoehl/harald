@@ -1,0 +1,26 @@
+version = 2
+log_level = "debug"
+dial_timeout = "10ms"
+enable_listeners = true
+
+[rules.http]
+dial_timeout = "5ms"
+
+listen.network = "tcp"
+listen.address = ":60001"
+
+connect.network = "tcp"
+connect.address = "localhost:8080"
+
+tls.certificate = """-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----"""
+tls.key = """-----BEGIN EC PRIVATE KEY-----
+...
+-----END EC PRIVATE KEY-----"""
+tls.client_cas = """-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----"""

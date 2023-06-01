@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "log_level": "debug",
+  "dial_timeout": "10ms",
+  "enable_listeners": true,
+  "rules": {
+    "http": {
+      "dial_timeout": "5ms",
+      "listen": {
+        "network": "tcp",
+        "address": ":60001"
+      },
+      "connect": {
+        "network": "tcp",
+        "address": "localhost:8080"
+      },
+      "tls": {
+        "certificate": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+        "key": "-----BEGIN EC PRIVATE KEY-----\n...\n-----END EC PRIVATE KEY-----",
+        "client_cas": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+        "key_log_file": "/tmp/keys"
+      }
+    }
+  }
+}
