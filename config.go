@@ -5,11 +5,27 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"golang.org/x/exp/slog"
 )
+
+var keyLogWriter io.Writer
+
+func init() {
+	path, ok := os.LookupEnv("SSLKEYLOGFILE")
+	if !ok {
+		return
+	}
+	slog.Warn("enabling logging of tls session keys")
+	w, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		panic(fmt.Sprintf("error: unable to open SSLKEYLOGFILE: %s", err.Error()))
+	}
+	keyLogWriter = w
+}
 
 type Duration time.Duration
 
@@ -30,19 +46,18 @@ func (d *Duration) Duration() time.Duration {
 }
 
 type Config struct {
-	ConfigVersion
-	LogLevel        slog.Level    `json:"log_level" yaml:"log_level"`
-	DialTimeout     Duration      `json:"dial_timeout" yaml:"dial_timeout"`
-	EnableListeners bool          `json:"enable_listeners" yaml:"enable_listeners"`
-	TLS             *TLS          `json:"tls" yaml:"tls"`
-	Rules           []ForwardRule `json:"rules" yaml:"rules"`
+	Version         `yaml:",inline"`
+	LogLevel        slog.Level             `json:"log_level" yaml:"log_level" toml:"log_level"`
+	DialTimeout     Duration               `json:"dial_timeout" yaml:"dial_timeout" toml:"dial_timeout"`
+	EnableListeners bool                   `json:"enable_listeners" yaml:"enable_listeners" toml:"enable_listeners"`
+	Rules           map[string]ForwardRule `json:"rules" yaml:"rules" toml:"rules"`
 }
 
-type ConfigVersion struct {
-	Version *int `json:"version" yaml:"version"`
+type Version struct {
+	Version *int `json:"version" yaml:"version" toml:"version"`
 }
 
-func (v ConfigVersion) Get() int {
+func (v Version) Get() int {
 	if v.Version == nil {
 		return 1
 	}
@@ -51,21 +66,32 @@ func (v ConfigVersion) Get() int {
 }
 
 type ForwardRule struct {
-	// Listen parameters to listen for new connections.
-	Listen NetConf `json:"listen" yaml:"listen"`
-	// Connect parameters
-	Connect NetConf `json:"connect" yaml:"connect"`
+	DialTimeout Duration `json:"dial_timeout" yaml:"dial_timeout" toml:"dial_timeout"`
+	Listen      NetConf  `json:"listen" yaml:"listen" toml:"listen"`
+	Connect     NetConf  `json:"connect" yaml:"connect" toml:"connect"`
+	TLS         *TLS     `json:"tls" yaml:"tls" toml:"tls"`
 }
 
-// Forwarder creates the matching Forwarder to the rule and the given
-// additional parameters. If tlsConf is nil no TLS will be used to listen for
-// new connections.
-func (r ForwardRule) Forwarder(tlsConf *tls.Config, dialTimeout time.Duration) *Forwarder {
-	return &Forwarder{
+// NewForwarder initialize a new forwarder based on the rule it's called on and
+// the additional parameters passed in.
+func (r ForwardRule) NewForwarder(name string, defaultDialTimeout time.Duration) (*Forwarder, error) {
+	var err error
+	f := Forwarder{
 		ForwardRule: r,
-		tlsConf:     tlsConf,
-		timeout:     dialTimeout,
+		name:        name,
+		timeout:     defaultDialTimeout,
 	}
+
+	f.tlsConf, err = r.TLS.Config()
+	if err != nil {
+		return nil, fmt.Errorf("new forwarder: %s: %w", name, err)
+	}
+
+	if r.DialTimeout != 0 {
+		f.DialTimeout = r.DialTimeout
+	}
+
+	return &f, nil
 }
 
 type NetConf struct {
@@ -78,7 +104,6 @@ type TLS struct {
 	Certificate string `json:"certificate" yaml:"certificate"`
 	Key         string `json:"key" yaml:"key"`
 	ClientCAs   string `json:"client_cas" yaml:"client_cas"`
-	KeyLogFile  string `json:"key_log_file" yaml:"key_log_file"`
 	// ApplicationProtocols offered via ALPN in order of preference. See the
 	// IANA registry for a list of options:
 	// https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
@@ -86,30 +111,22 @@ type TLS struct {
 }
 
 func (t *TLS) Config() (conf *tls.Config, err error) {
+	if t == nil {
+		return nil, nil
+	}
+
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("tls config: %w", err)
 		}
 	}()
 
-	if t == nil {
-		return nil, nil
-	}
-
 	conf = &tls.Config{
 		NextProtos: t.ApplicationProtocols,
 		ClientCAs:  x509.NewCertPool(),
 	}
 
-	// set up TLS keylogger
-	if t.KeyLogFile != "" {
-		slog.Warn("enabling logging of tls session keys")
-
-		conf.KeyLogWriter, err = os.OpenFile(t.KeyLogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			return nil, fmt.Errorf("create key log writer: %w", err)
-		}
-	}
+	conf.KeyLogWriter = keyLogWriter
 
 	// parse certificate and key
 	cert, err := tls.X509KeyPair([]byte(t.Certificate), []byte(t.Key))
@@ -123,7 +140,6 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 	var certs int
 
 	d := []byte(t.ClientCAs)
-
 	for len(d) > 0 {
 		block, d = pem.Decode(d)
 		if block == nil {

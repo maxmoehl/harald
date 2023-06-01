@@ -39,15 +39,16 @@ const (
 // Harald is the main entrypoint. The config controls the behaviour and the
 // signals channel is used to bring up / shut down the listeners and stop the
 // execution. The channel should be subscribed to SIGTERM, SIGUSR1 and SIGUSR2.
-func Harald(c Config, signals <-chan os.Signal) error {
-	tlsConf, err := c.TLS.Config()
-	if err != nil {
-		return fmt.Errorf("load tls config: %w", err)
-	}
-
+func Harald(c Config, signals <-chan os.Signal) (err error) {
 	var forwarders Forwarders
-	for _, r := range c.Rules {
-		forwarders = append(forwarders, r.Forwarder(tlsConf, c.DialTimeout.Duration()))
+
+	var f *Forwarder
+	for name, r := range c.Rules {
+		f, err = r.NewForwarder(name, c.DialTimeout.Duration())
+		if err != nil {
+			return fmt.Errorf("harald: %w", err)
+		}
+		forwarders = append(forwarders, f)
 	}
 
 	slog.Info("harald is ready")
@@ -82,6 +83,7 @@ func Harald(c Config, signals <-chan os.Signal) error {
 
 type Forwarder struct {
 	ForwardRule
+	name     string
 	listener net.Listener
 	tlsConf  *tls.Config
 	timeout  time.Duration
@@ -212,8 +214,8 @@ func (f *Forwarder) Stop() {
 // String representation of the Forwarder. The format of the addresses is
 // inspired by the '-i' argument of lsof.
 func (f *Forwarder) String() string {
-	return fmt.Sprintf("Forwarder(%s@%s->%s@%s)",
-		f.Listen.Network, f.Listen.Address, f.Connect.Network, f.Connect.Address)
+	return fmt.Sprintf("Forwarder(%s; %s@%s->%s@%s)",
+		f.name, f.Listen.Network, f.Listen.Address, f.Connect.Network, f.Connect.Address)
 }
 
 // Forwarders maintains a list of pointers to Forwarder. It holds pointers

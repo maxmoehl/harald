@@ -30,21 +30,22 @@ func TestTlsWithClientAuth(t *testing.T) {
 	go harald.Harald(harald.Config{
 		LogLevel:    slog.LevelDebug,
 		DialTimeout: harald.Duration(10 * time.Millisecond),
-		TLS: &harald.TLS{
-			Certificate: string(serverCertPem),
-			Key:         string(serverKeyPem),
-			ClientCAs:   string(ca.PEM()),
-		},
-		Rules: []harald.ForwardRule{{
-			Listen: harald.NetConf{
-				Network: "tcp",
-				Address: haraldAddr,
-			},
-			Connect: harald.NetConf{
-				Network: "tcp",
-				Address: backendAddr,
-			},
-		}},
+		Rules: map[string]harald.ForwardRule{
+			"http": {
+				Listen: harald.NetConf{
+					Network: "tcp",
+					Address: haraldAddr,
+				},
+				Connect: harald.NetConf{
+					Network: "tcp",
+					Address: backendAddr,
+				},
+				TLS: &harald.TLS{
+					Certificate: string(serverCertPem),
+					Key:         string(serverKeyPem),
+					ClientCAs:   string(ca.PEM()),
+				},
+			}},
 	}, signals)
 
 	signals <- syscall.SIGUSR1

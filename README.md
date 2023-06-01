@@ -5,52 +5,58 @@ Harald has one goal and one goal only: forward traffic if you want it.
 
 ## Config
 
-Each config looks like this:
-```json
-{
-  "version": 1,
-  "log_level": "debug",
-  "dial_timeout": "10ms",
-  "enable_listeners": false,
-  "tls": {},
-  "rules": []
-}
-```
-Fields:
-- `version`: version of the config file, must either be unset or `1`.
-- `log_level`: which log messages to emit, see [log/slog.Level.UnmarshalJSON](https://pkg.go.dev/log/slog#Level.UnmarshalJSON) for the format details.
-- `enable_listeners`: whether to start the listeners right away.
-- `dial_timeout`: sets the dial timeout for connections to the target. See [time.ParseDuration](https://pkg.go.dev/time#ParseDuration) for the format details.
-- `tls`: TLS configuration for the listeners, see [TLS](#TLS) for more details.
-- `rules`: contains all forwarding rules, see [Rules](#Rules) for more details.
+The config can be written in:
+- YAML (`*.yml` or `*.yaml`)
+- JSON (`*.json`)
+- TOML (`*.toml`)
 
-### TLS
+Version 1 has been deprecated and is no longer accepted.
 
-The TLS config looks like this:
-```json
-{
-  "certificate": "PEM",
-  "key": "PEM",
-  "client_cas": "PEM",
-  "key_log_file": "/some/path",
-  "application_protocols": ["http/1.1", "h2"]
-}
+See the `examples/` directory for full config examples.
+
+Config version 2 is structured like this:
+```yaml
+version: 2 # the version of this config file
+log_level: "debug" # see https://pkg.go.dev/log/slog#Level.UnmarshalJSON for details
+dial_timeout: "10ms" # default dial_timeout, can be overwritten in a rule, must be in a format that can be parsed by https://pkg.go.dev/time#ParseDuration
+enable_listeners: false # whether to start all listeners right away
+rules: # the rules for forwarding traffic
+  http: { }, # rules have names to be able to identify them in logs etc.
+  ssh: { },
 ```
 
 ### Rules
 
 A rule looks like this:
-```json
-{
-  "listen": {
-    "network": "tcp",
-    "address": ":60001"
-  },
-  "connect": {
-    "network": "tcp",
-    "address": "localhost:8080"
-  }
-}
+```yaml
+# the two arguments passed to https://pkg.go.dev/net#Listen
+listen:
+  network: tcp
+  address: :60001
+# the two arguments passed to https://pkg.go.dev/net#Dial
+connect:
+  network: tcp
+  address: localhost:8080
+# configuration for server-side TLS
+tls:
+  # protocols offered via the ALPN TLS extension
+  application_protocols: [ "http/1.1", "h2" ]
+  # server certificate as PEM encoded
+  certificate: |
+      -----BEGIN CERTIFICATE-----
+      ...
+      -----END CERTIFICATE-----
+  # key for the server certificate
+  key: |
+    -----BEGIN EC PRIVATE KEY-----
+    ...
+    -----END EC PRIVATE KEY-----
+  # client CAs, when set all clients have to provide a valid client certificate
+  client_cas: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
 ```
-
-The `listen` key specifies how and where to listen and the `connect` settings will be used to connect to the target address. For more details about the `listen` options see the [net.Listen](https://pkg.go.dev/net#Listen) documentation, for  the `connect` details see [net.Dial](https://pkg.go.dev/net#Dial).
