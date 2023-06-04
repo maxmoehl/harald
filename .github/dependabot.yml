@@ -6,3 +6,9 @@ updates:
       prefix: dep
     schedule:
       interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    commit-message:
+      prefix: ci
+    schedule:
+      interval: weekly
