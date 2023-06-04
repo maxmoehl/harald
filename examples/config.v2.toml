@@ -24,3 +24,5 @@ tls.client_cas = """-----BEGIN CERTIFICATE-----
 -----BEGIN CERTIFICATE-----
 ...
 -----END CERTIFICATE-----"""
+
+tls.application_protocols = ["h2", "http/1.1"]

@@ -18,7 +18,7 @@
         "certificate": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
         "key": "-----BEGIN EC PRIVATE KEY-----\n...\n-----END EC PRIVATE KEY-----",
         "client_cas": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
-        "key_log_file": "/tmp/keys"
+        "application_protocols": ["h2", "http/1.1"]
       }
     }
   }
