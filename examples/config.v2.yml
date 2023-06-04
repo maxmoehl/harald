@@ -26,3 +26,6 @@ rules:
         -----BEGIN CERTIFICATE-----
         ...
         -----END CERTIFICATE-----
+      application_protocols:
+        - h2
+        - http/1.1
