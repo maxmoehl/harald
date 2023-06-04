@@ -11,6 +11,8 @@ RUN go install ./cmd/harald
 
 FROM alpine:${ALPINE_VERSION}
 
+LABEL org.opencontainers.image.source = "https://github.com/maxmoehl/harald"
+
 COPY --from=builder /usr/local/bin/harald /usr/local/bin
 
 ENTRYPOINT [ "/usr/local/bin/harald" ]
