@@ -14,8 +14,8 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: 1.20.X
-      - name: Test
-        run: go test -v
+      - name: Test # runs all tests except those in the `integration` directory
+        run: go test -v $(go list ./... | grep -v integration)
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
