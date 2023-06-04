@@ -3,13 +3,17 @@ package harald
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"golang.org/x/exp/slog"
+	"gopkg.in/yaml.v3"
 )
 
 var keyLogWriter io.Writer
@@ -46,23 +50,11 @@ func (d *Duration) Duration() time.Duration {
 }
 
 type Config struct {
-	Version         `yaml:",inline"`
+	Version         int                    `json:"version" yaml:"version" toml:"version"`
 	LogLevel        slog.Level             `json:"log_level" yaml:"log_level" toml:"log_level"`
 	DialTimeout     Duration               `json:"dial_timeout" yaml:"dial_timeout" toml:"dial_timeout"`
 	EnableListeners bool                   `json:"enable_listeners" yaml:"enable_listeners" toml:"enable_listeners"`
 	Rules           map[string]ForwardRule `json:"rules" yaml:"rules" toml:"rules"`
-}
-
-type Version struct {
-	Version *int `json:"version" yaml:"version" toml:"version"`
-}
-
-func (v Version) Get() int {
-	if v.Version == nil {
-		return 1
-	}
-
-	return *v.Version
 }
 
 type ForwardRule struct {
@@ -169,4 +161,34 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 	}
 
 	return conf, nil
+}
+
+func LoadConfig(path string) (Config, error) {
+	r, err := os.Open(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("load config: %w", err)
+	}
+
+	parts := strings.Split(path, ".")
+
+	var c Config
+	switch parts[len(parts)-1] {
+	case "yaml", "yml":
+		err = yaml.NewDecoder(r).Decode(&c)
+	case "json":
+		err = json.NewDecoder(r).Decode(&c)
+	case "toml":
+		_, err = toml.NewDecoder(r).Decode(&c)
+	default:
+		err = fmt.Errorf("unknown file extension '%s'", parts[len(parts)-1])
+	}
+	if err != nil {
+		return Config{}, fmt.Errorf("load config: %w", err)
+	}
+
+	if c.Version != 2 {
+		return Config{}, fmt.Errorf("load config: unknown version '%d'", c.Version)
+	}
+
+	return c, nil
 }
