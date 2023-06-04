@@ -1,0 +1,17 @@
+name: Main Branch
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  validation:
+    name: Validation
+    uses: ./.github/workflows/validation.yml
+  publish:
+    name: Publish
+    needs: validation
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml

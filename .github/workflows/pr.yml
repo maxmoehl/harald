@@ -1,0 +1,19 @@
+name: Pull Request
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validation:
+    name: Validation
+    uses: ./.github/workflows/validation.yml
+  publish:
+    name: Publish
+    needs: validation
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: pr-${{ github.event.number }}
