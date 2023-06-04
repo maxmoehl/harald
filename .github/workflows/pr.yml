@@ -15,5 +15,3 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/publish.yml
-    with:
-      tag: pr-${{ github.event.number }}
