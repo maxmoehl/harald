@@ -93,13 +93,16 @@ type NetConf struct {
 
 // TLS configuration for the server side.
 type TLS struct {
-	Certificate string `json:"certificate" yaml:"certificate"`
-	Key         string `json:"key" yaml:"key"`
-	ClientCAs   string `json:"client_cas" yaml:"client_cas"`
+	Certificate string `json:"certificate" yaml:"certificate" toml:"certificate"`
+	Key         string `json:"key" yaml:"key" toml:"key"`
+	ClientCAs   string `json:"client_cas" yaml:"client_cas" toml:"client_cas"`
 	// ApplicationProtocols offered via ALPN in order of preference. See the
 	// IANA registry for a list of options:
 	// https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
-	ApplicationProtocols []string `json:"application_protocols" yaml:"application_protocols"`
+	ApplicationProtocols []string `json:"application_protocols" yaml:"application_protocols" toml:"application_protocols"`
+	// See the go documentation for details:
+	// https://pkg.go.dev/crypto/tls#ClientAuthType
+	ClientAuth tls.ClientAuthType `json:"client_auth" yaml:"client_auth" toml:"client_auth"`
 }
 
 func (t *TLS) Config() (conf *tls.Config, err error) {
@@ -113,9 +116,14 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 		}
 	}()
 
+	if t.ClientCAs == "" && t.ClientAuth > 0 {
+		return nil, fmt.Errorf("configuered client authentication but no client CAs provided")
+	}
+
 	conf = &tls.Config{
 		NextProtos: t.ApplicationProtocols,
 		ClientCAs:  x509.NewCertPool(),
+		ClientAuth: t.ClientAuth,
 	}
 
 	conf.KeyLogWriter = keyLogWriter
@@ -154,10 +162,6 @@ func (t *TLS) Config() (conf *tls.Config, err error) {
 	if t.ClientCAs != "" && certs == 0 {
 		// there was something configured, but we didn't pick up any certs
 		return nil, fmt.Errorf("unable to parse provided client CAs")
-	}
-
-	if certs > 0 {
-		conf.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
 	return conf, nil
