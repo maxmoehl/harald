@@ -41,6 +41,7 @@ connect:
 tls:
   # protocols offered via the ALPN TLS extension
   application_protocols: [ "http/1.1", "h2" ]
+  client_auth: 5
   # server certificate as PEM encoded
   certificate: |
       -----BEGIN CERTIFICATE-----
