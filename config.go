@@ -7,12 +7,12 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"golang.org/x/exp/slog"
 	"gopkg.in/yaml.v3"
 )
 

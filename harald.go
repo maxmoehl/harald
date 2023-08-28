@@ -18,13 +18,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/exp/slog"
 )
 
 const (

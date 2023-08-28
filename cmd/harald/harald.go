@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/maxmoehl/harald"
-
-	"golang.org/x/exp/slog"
 )
 
 var logLevel = &slog.LevelVar{}
