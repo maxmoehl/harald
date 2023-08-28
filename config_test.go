@@ -4,11 +4,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/slog"
 )
 
 func Test_duration_UnmarshalJSON(t *testing.T) {

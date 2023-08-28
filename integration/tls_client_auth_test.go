@@ -7,12 +7,11 @@ package integration
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"log/slog"
 	"os"
 	"syscall"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/slog"
 
 	"github.com/maxmoehl/harald"
 	"github.com/maxmoehl/harald/haraldtest"
