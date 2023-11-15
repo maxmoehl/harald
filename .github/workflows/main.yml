@@ -3,6 +3,7 @@ name: Main Branch
 on:
   push:
     branches: [ main ]
+    tags: [ '*' ]
 
 jobs:
   validation:
