@@ -175,6 +175,10 @@ func LoadConfig(path string) (Config, error) {
 
 	parts := strings.Split(path, ".")
 
+	if len(parts) == 0 {
+		return Config{}, fmt.Errorf("load config: file hast no file extension")
+	}
+
 	var c Config
 	switch parts[len(parts)-1] {
 	case "yaml", "yml":
