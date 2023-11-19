@@ -51,6 +51,10 @@ func Harald(c Config, signals <-chan os.Signal) (err error) {
 		forwarders = append(forwarders, f)
 	}
 
+	if len(forwarders) == 0 {
+		return fmt.Errorf("harald: no forwarders configured")
+	}
+
 	slog.Info("harald is ready")
 
 	if c.EnableListeners {
