@@ -34,3 +34,15 @@ jobs:
           go-version: ${{ matrix.go }}
       - name: Test
         run: go test -v ./integration
+  vet:
+    name: Go vet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Vet
+        run: go vet ./...
