@@ -34,6 +34,20 @@ jobs:
           go-version: ${{ matrix.go }}
       - name: Test
         run: go test -v ./integration
+  actions:
+    name: Lint Workflows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Set up linter
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@latest
+      - name: Lint
+        run: actionlint
   vet:
     name: Go vet
     runs-on: ubuntu-latest
