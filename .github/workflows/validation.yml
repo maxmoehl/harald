@@ -7,24 +7,30 @@ jobs:
   unit:
     name: Unit Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ stable, oldstable ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.21.X
+          go-version: ${{ matrix.go }}
       - name: Test # runs all tests except those in the `integration` directory
         run: go list ./... | grep -v integration | xargs -d '\n' | go test -v
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ stable, oldstable ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.21.X
+          go-version: ${{ matrix.go }}
       - name: Test
         run: go test -v ./integration
