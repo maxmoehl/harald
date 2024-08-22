@@ -27,13 +27,13 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	KeyForwarder    = "forwarder"
-	KeyError        = "error"
-	KeySignal       = "signal"
-	KeyPid          = "pid"
-	KeyBytesWritten = "bytes-written"
-	KeyConnId       = "conn-id"
+// Helpers to format common logging fields consistently.
+var (
+	attrBytesWritten = func(n int64) slog.Attr { return slog.Int64("bytes-written", n) }
+	attrConnId       = func(id uuid.UUID) slog.Attr { return slog.Any("conn-id", fmt.Stringer(id)) }
+	attrError        = func(err error) slog.Attr { return slog.String("error", err.Error()) }
+	attrForwarder    = func(f *Forwarder) slog.Attr { return slog.Any("forwarder", fmt.Stringer(f)) }
+	attrSignal       = func(s os.Signal) slog.Attr { return slog.String("signal", s.String()) }
 )
 
 // Harald is the main entrypoint. The config controls the behaviour and the
@@ -63,7 +63,7 @@ func Harald(c Config, signals <-chan os.Signal) (err error) {
 	}
 
 	for sig := range signals {
-		slog.Info("received signal", KeySignal, sig.String())
+		slog.Info("received signal", attrSignal(sig))
 
 		switch sig {
 		case syscall.SIGTERM:
@@ -78,7 +78,7 @@ func Harald(c Config, signals <-chan os.Signal) (err error) {
 			forwarders.Stop()
 			slog.Info("stopped listeners")
 		default:
-			slog.Debug("ignoring unknown signal", KeySignal, sig.String())
+			slog.Debug("ignoring unknown signal", attrSignal(sig))
 		}
 	}
 
@@ -91,15 +91,16 @@ type Forwarder struct {
 	listener net.Listener
 	tlsConf  *tls.Config
 	timeout  time.Duration
+	log      *slog.Logger
 }
 
 // Start opens a new listener.
 func (f *Forwarder) Start() (err error) {
 	if f.listener != nil {
-		slog.Debug("listener already open, not starting again", KeyForwarder, f.String())
+		f.log.Debug("listener already open, not starting again")
 		return nil
 	}
-	slog.Debug("starting listener", KeyForwarder, f.String())
+	f.log.Debug("starting listener")
 
 	f.listener, err = net.Listen(f.Listen.Network, f.Listen.Address)
 	if err != nil {
@@ -117,7 +118,7 @@ func (f *Forwarder) Start() (err error) {
 				} else {
 					// otherwise we log the error and continue
 					// TODO: could this result in a short-circuit where we constantly log the same error?
-					slog.Error("unable to accept connection", err, KeyForwarder, f.String(), KeyError, err.Error())
+					f.log.Error("unable to accept connection", attrError(err))
 					continue
 				}
 			}
@@ -130,14 +131,14 @@ func (f *Forwarder) Start() (err error) {
 }
 
 func (f *Forwarder) handle(source net.Conn) {
-	log := slog.With(KeyForwarder, f.String(), KeyConnId, uuid.Must(uuid.NewRandom()))
+	log := f.log.With(attrConnId(uuid.Must(uuid.NewRandom())))
 	log.Debug("handle start")
 
 	defer func() { _ = source.Close() }()
 
 	target, err := net.DialTimeout(f.Connect.Network, f.Connect.Address, f.timeout)
 	if err != nil {
-		log.Error("connecting upstream failed", KeyError, err.Error())
+		log.Error("connecting upstream failed", attrError(err))
 		return
 	}
 	defer func() { _ = target.Close() }()
@@ -161,9 +162,9 @@ func (f *Forwarder) handle(source net.Conn) {
 		log.Debug("copy source->target started")
 		n, err := io.Copy(target, source)
 		if err != nil {
-			log.Error("copy source->target stopped", KeyBytesWritten, n, KeyError, err.Error())
+			log.Error("copy source->target stopped", attrBytesWritten(n), attrError(err))
 		} else {
-			log.Debug("copy source->target stopped", KeyBytesWritten, n)
+			log.Debug("copy source->target stopped", attrBytesWritten(n))
 		}
 
 	}()
@@ -173,9 +174,9 @@ func (f *Forwarder) handle(source net.Conn) {
 		log.Debug("copy target->source started")
 		n, err := io.Copy(source, target)
 		if err != nil {
-			log.Error("copy target->source stopped", KeyBytesWritten, n, KeyError, err.Error())
+			log.Error("copy target->source stopped", attrBytesWritten(n), attrError(err))
 		} else {
-			log.Debug("copy target->source stopped", KeyBytesWritten, n)
+			log.Debug("copy target->source stopped", attrBytesWritten(n))
 		}
 	}()
 
@@ -188,10 +189,10 @@ func (f *Forwarder) handle(source net.Conn) {
 // TODO: does this need explicit synchronization?
 func (f *Forwarder) Stop() {
 	if f.listener == nil {
-		slog.Debug("listener already cosed", KeyForwarder, f.String())
+		f.log.Debug("listener already cosed")
 		return
 	}
-	slog.Debug("closing listener", KeyForwarder, f.String())
+	f.log.Debug("closing listener")
 
 	// First, we copy the pointer, then we set the listener to nil. The case
 	// in which this happens twice and one of the routines gets nil is handled
@@ -204,14 +205,14 @@ func (f *Forwarder) Stop() {
 		// to stop run in parallel. In such cases the if at the beginning of
 		// the function is not enough to prevent us from still getting a nil
 		// listener which would cause a panic when we try to call Close on it.
-		slog.Warn("detected double stop, ignoring second stop", KeyForwarder, f.String())
+		f.log.Warn("detected double stop, ignoring second stop")
 		return
 	}
 
 	err := l.Close()
 	if err != nil {
 		// Only a warning because the listener is closed in any case.
-		slog.Warn("error while closing listener", KeyForwarder, f.String(), KeyError, err.Error())
+		f.log.Warn("error while closing listener", attrError(err))
 	}
 }
 
@@ -233,7 +234,7 @@ func (forwarders Forwarders) Start() {
 	for _, f := range forwarders {
 		err = f.Start()
 		if err != nil {
-			slog.Error("failed to start forwarder", KeyForwarder, f.String(), KeyError, err)
+			f.log.Error("failed to start forwarder", attrError(err))
 		}
 	}
 }

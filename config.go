@@ -83,6 +83,8 @@ func (r ForwardRule) NewForwarder(name string, defaultDialTimeout time.Duration)
 		f.DialTimeout = r.DialTimeout
 	}
 
+	f.log = slog.With(attrForwarder(&f))
+
 	return &f, nil
 }
 

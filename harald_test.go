@@ -14,22 +14,23 @@ import (
 // TestClosingListenerDoesntCloseConnection ensures that active connections
 // are not affected by the listener being closed.
 func TestClosingListenerDoesntCloseConnection(t *testing.T) {
-	forwarder := Forwarder{
-		ForwardRule: ForwardRule{
-			Listen: NetConf{
-				Network: "tcp",
-				Address: "127.0.0.1:0",
-			},
-			Connect: NetConf{
-				Network: "tcp",
-				Address: haraldtest.EchoChamber(t),
-			},
+	r := ForwardRule{
+		Listen: NetConf{
+			Network: "tcp",
+			Address: "127.0.0.1:0",
 		},
-		listener: nil,
-		tlsConf:  nil,
+		Connect: NetConf{
+			Network: "tcp",
+			Address: haraldtest.EchoChamber(t),
+		},
 	}
 
-	err := forwarder.Start()
+	forwarder, err := r.NewForwarder("test", 0)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	err = forwarder.Start()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -82,25 +83,28 @@ func TestClosingListenerDoesntCloseConnection(t *testing.T) {
 // TestNoUpstreamConnection ensures that a client is unable to start a
 // TLS handshake with harald if harald is unable to connect to its target.
 func TestNoUpstreamConnection(t *testing.T) {
-	forwarder := Forwarder{
-		ForwardRule: ForwardRule{
-			Listen: NetConf{
-				Network: "tcp",
-				Address: "127.0.0.1:0",
-			},
-			Connect: NetConf{
-				Network: "tcp",
-				Address: "127.0.0.1:0",
-			},
+	r := ForwardRule{
+		Listen: NetConf{
+			Network: "tcp",
+			Address: "127.0.0.1:0",
 		},
-		listener: nil,
-		// Technically we need a TLS config, but since there is no upstream
-		// connection we expect that the connection never gets to the TLS
-		// handshake.
-		tlsConf: &tls.Config{},
+		Connect: NetConf{
+			Network: "tcp",
+			Address: "127.0.0.1:0",
+		},
 	}
 
-	err := forwarder.Start()
+	forwarder, err := r.NewForwarder("test", 0)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	// Technically we need a TLS config, but since there is no upstream
+	// connection we expect that the connection never gets to the TLS
+	// handshake.
+	forwarder.tlsConf = &tls.Config{}
+
+	err = forwarder.Start()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -128,26 +132,26 @@ func TestNoUpstreamConnection(t *testing.T) {
 
 func TestTlsTermination(t *testing.T) {
 	ca := haraldtest.NewCertificateAuthority(t)
-	cert, err := tls.X509KeyPair(ca.NewServerCertificate(t))
-	if err != nil {
-		t.Fatalf("load key pair: %s", err.Error())
+	crt, key := ca.NewServerCertificate(t)
+
+	r := ForwardRule{
+		Listen: NetConf{
+			Network: "tcp",
+			Address: "127.0.0.1:0",
+		},
+		Connect: NetConf{
+			Network: "tcp",
+			Address: haraldtest.EchoChamber(t),
+		},
+		TLS: &TLS{
+			Certificate: string(crt),
+			Key:         string(key),
+		},
 	}
 
-	forwarder := Forwarder{
-		ForwardRule: ForwardRule{
-			Listen: NetConf{
-				Network: "tcp",
-				Address: "127.0.0.1:0",
-			},
-			Connect: NetConf{
-				Network: "tcp",
-				Address: haraldtest.EchoChamber(t),
-			},
-		},
-		listener: nil,
-		tlsConf: &tls.Config{
-			Certificates: []tls.Certificate{cert},
-		},
+	forwarder, err := r.NewForwarder("test", 0)
+	if err != nil {
+		t.Fatal(err.Error())
 	}
 
 	err = forwarder.Start()
