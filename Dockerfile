@@ -1,4 +1,4 @@
-FROM golang:1.23.2-alpine AS builder
+FROM golang:1.23.3-alpine AS builder
 
 ENV GOBIN=/usr/local/bin
 RUN mkdir /src
