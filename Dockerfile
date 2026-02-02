@@ -7,7 +7,7 @@ WORKDIR /src
 COPY . /src
 RUN go install ./cmd/harald
 
-FROM alpine:3.23.2
+FROM alpine:3.23.3
 
 LABEL org.opencontainers.image.source = "https://github.com/maxmoehl/harald"
 LABEL org.opencontainers.image.licenses = MIT
